@@ -1,74 +1,79 @@
 import { reactive } from 'vue'
+import router from '@/router/index.js'
 
 const AUTH_TOKEN_KEY = 'studyflow_auth_token'
 const AUTH_USER_KEY = 'studyflow_auth_user'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
+let tokenExpiryTimerId = null
+
+function clearTokenExpiryTimer() {
+  if (tokenExpiryTimerId != null) {
+    clearTimeout(tokenExpiryTimerId)
+    tokenExpiryTimerId = null
+  }
+}
+
+function parseJwtPayload(token) {
+  if (!token || typeof token !== 'string') return null
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    const json = atob(padded)
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
+function getJwtExp(token) {
+  const exp = parseJwtPayload(token)?.exp
+  return typeof exp === 'number' ? exp : null
+}
+
+export function isAccessTokenExpired(token) {
+  const exp = getJwtExp(token)
+  if (exp == null) return false
+  return Date.now() >= exp * 1000
+}
+
+function scheduleTokenExpiryRedirect() {
+  clearTokenExpiryTimer()
+  const token = store.token
+  if (!token) return
+  const exp = getJwtExp(token)
+  if (exp == null) return
+  const ms = Math.max(0, exp * 1000 - Date.now())
+  tokenExpiryTimerId = setTimeout(() => {
+    tokenExpiryTimerId = null
+    if (store.token && isAccessTokenExpired(store.token)) {
+      store.clearAuth()
+      router.replace({ name: 'login' })
+    }
+  }, ms)
+}
+
 export const store = reactive({
   user: null,
   token: null,
-  decks: [
-    {
-      name: 'Anatomia człowieka',
-      subject: 'Biologia',
-      icon: '🧬',
-      color: '#EEEDFE',
-      fillColor: '#7F77DD',
-      pct: 65,
-      cards: [],
-      quizzes: [
-        {
-          name: 'Podstawy biologii',
-          questions: [
-            { q: 'Ile chromosomów ma człowiek?', answers: ['23', '46', '48', '22'], correct: 1 },
-            { q: 'Który organ wytwarza insulinę?', answers: ['Wątroba', 'Nerka', 'Trzustka', 'Śledziona'], correct: 2 },
-          ]
-        }
-      ]
-    },
-    {
-      name: 'Matematyka – całki',
-      subject: 'Matematyka',
-      icon: '∫',
-      color: '#E1F5EE',
-      fillColor: '#1D9E75',
-      pct: 40,
-      cards: [],
-      quizzes: [
-        {
-          name: 'Quiz całek',
-          questions: [
-            { q: 'Całka z x to?', answers: ['x + C', 'x²/2 + C', '2x + C', 'ln x + C'], correct: 1 },
-          ]
-        }
-      ]
-    },
-    {
-      name: 'Prawo cywilne',
-      subject: 'Prawo',
-      icon: '⚖',
-      color: '#FAEEDA',
-      fillColor: '#BA7517',
-      pct: 82,
-      cards: [],
-      quizzes: []
-    }
-  ],
 
   async login(email, password) {
     const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     })
 
-    if (!response.ok) {
-      throw new Error('Nieprawidłowy e-mail lub hasło.')
+    const data = await response.json()
+
+    if (data.errors) {
+      const error = new Error('Request failed')
+      error.errors = data.errors
+      throw error
     }
 
-    const data = await response.json()
     if (!data?.token) {
       throw new Error('Brak tokenu JWT w odpowiedzi backendu.')
     }
@@ -77,36 +82,57 @@ export const store = reactive({
     this.user = data.user || { email }
     localStorage.setItem(AUTH_TOKEN_KEY, this.token)
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.user))
+    scheduleTokenExpiryRedirect()
+
+    router.push({ name: 'dashboard' })
   },
 
-  async register(name, email, password) {
+  async register(email, password) {
     const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ name, email, password })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
     })
 
-    if (!response.ok) {
-      throw new Error('Nie udało się utworzyć konta.')
+    const data = await response.json()
+
+    if (data.errors) {
+      const error = new Error('Request failed')
+      error.errors = data.errors
+      throw error
     }
 
-    const data = await response.json()
     if (!data?.token) {
       throw new Error('Brak tokenu JWT w odpowiedzi backendu.')
     }
 
     this.token = data.token
-    this.user = data.user || { name, email }
+    this.user = data.user || { email }
     localStorage.setItem(AUTH_TOKEN_KEY, this.token)
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.user))
+    scheduleTokenExpiryRedirect()
+
+    router.push({ name: 'dashboard' })
+  },
+
+  clearAuth() {
+    clearTokenExpiryTimer()
+    this.user = null
+    this.token = null
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    localStorage.removeItem(AUTH_USER_KEY)
   },
 
   initAuth() {
     const token = localStorage.getItem(AUTH_TOKEN_KEY)
     const userRaw = localStorage.getItem(AUTH_USER_KEY)
     if (!token) return
+
+    if (isAccessTokenExpired(token)) {
+      localStorage.removeItem(AUTH_TOKEN_KEY)
+      localStorage.removeItem(AUTH_USER_KEY)
+      return
+    }
 
     this.token = token
     if (userRaw) {
@@ -116,20 +142,11 @@ export const store = reactive({
         this.user = null
       }
     }
+    scheduleTokenExpiryRedirect()
   },
 
   logout() {
-    this.user = null
-    this.token = null
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-    localStorage.removeItem(AUTH_USER_KEY)
-  },
-
-  addDeck(deck) {
-    this.decks.push({
-      ...deck,
-      cards: [],
-      quizzes: deck.quizzes || []
-    })
+    this.clearAuth()
+    router.push({ name: 'login' })
   }
 })

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <AppLayout>
     <div class="stats-grid">
       <div class="stat">
         <div class="stat-label">Nauka dzisiaj</div>
@@ -56,26 +56,28 @@
     <div v-if="selectedDeckIndex !== null && gridItems.length === 0" class="empty-note">
       Ten zestaw nie ma jeszcze quizów.
     </div>
-  </div>
+  </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { store } from '../entities/store.js'
+import { ref, computed, onMounted } from 'vue'
+import { fetchDecks } from '@/api/topics.js'
+import AppLayout from "@/layout/AppLayout.vue";
 
 const emit = defineEmits(['run-quiz'])
 
 const todayCount = ref(0)
+const decks = ref([])
 const selectedDeckIndex = ref(null)
 
 const selectedDeck = computed(() => {
   if (selectedDeckIndex.value === null) return null
-  return store.decks[selectedDeckIndex.value]
+  return decks.value[selectedDeckIndex.value]
 })
 
 const gridItems = computed(() => {
   if (selectedDeckIndex.value === null) {
-    return store.decks.map(deck => ({
+    return decks.value.map(deck => ({
       name: deck.name,
       icon: deck.icon,
       color: deck.color,
@@ -106,6 +108,14 @@ function onCubeClick(i) {
     quizIndex: i
   })
 }
+
+onMounted(async () => {
+  try {
+    decks.value = await fetchDecks()
+  } catch {
+    /* ignore */
+  }
+})
 </script>
 
 <style scoped>

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <AppLayout>
     <div class="profile-card">
       <div class="avatar">{{ initials }}</div>
       <div>
@@ -10,35 +10,46 @@
     </div>
 
     <div class="profile-stats">
-      <div class="stat"><div class="stat-label">Zestawy</div><div class="stat-value">{{ store.decks.length }}</div></div>
+      <div class="stat"><div class="stat-label">Zestawy</div><div class="stat-value">{{ decks.length }}</div></div>
       <div class="stat"><div class="stat-label">Quizy</div><div class="stat-value">{{ totalQuizzes }}</div></div>
       <div class="stat"><div class="stat-label">Pytania</div><div class="stat-value">{{ totalQuestions }}</div></div>
     </div>
 
     <button class="btn-logout" @click="logout">Wyloguj się</button>
-  </div>
+  </AppLayout>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { store } from '../entities/store.js'
+import { computed, ref, onMounted } from 'vue'
+import { store } from '@/entities/store.js'
+import { fetchDecks } from '@/api/topics.js'
+import AppLayout from '@/layout/AppLayout.vue'
 
 const emit = defineEmits(['logged-out'])
+const decks = ref([])
 
 const initials = computed(() =>
   (store.user?.name || 'JK').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 )
 
 const totalQuizzes = computed(() =>
-  store.decks.reduce((sum, deck) => sum + (deck.quizzes?.length || 0), 0)
+  decks.value.reduce((sum, deck) => sum + (deck.quizzes?.length || 0), 0)
 )
 
 const totalQuestions = computed(() =>
-  store.decks.reduce(
+  decks.value.reduce(
     (sum, deck) => sum + (deck.quizzes || []).reduce((qSum, quiz) => qSum + (quiz.questions?.length || 0), 0),
     0
   )
 )
+
+onMounted(async () => {
+  try {
+    decks.value = await fetchDecks()
+  } catch {
+    /* ignore */
+  }
+})
 
 function logout() {
   store.logout()
@@ -56,6 +67,6 @@ function logout() {
 .stat { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; }
 .stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
 .stat-value { font-size: 24px; font-weight: 500; }
-.btn-logout { width: 100%; padding: 10px; border-radius: var(--radius-md); border: 0.5px solid var(--border-hover); background: transparent; font-size: 14px; color: var(--danger); }
+.btn-logout { width: 100%; padding: 10px; border-radius: var(--radius-md); border: 0.5px solid var(--border-hover); background: transparent; font-size: 14px; color: var(--danger); cursor: pointer; }
 .btn-logout:hover { background: var(--danger-light); }
 </style>

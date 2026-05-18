@@ -1,0 +1,7 @@
+/**
+ * Tailwind CSS v4 (via @tailwindcss/vite).
+ * Spacing & padding utilities are included here — no separate “padding library”:
+ * p-0 … p-96, px-*, py-*, pt-*, pr-*, pb-*, pl-*, ps-*, pe-*,
+ * m-*, mx-*, my-*, gap-*, space-x-*, space-y-*, etc.
+ */
+@import "tailwindcss";

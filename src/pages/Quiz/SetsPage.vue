@@ -1,10 +1,10 @@
 <template>
-  <div>
+  <AppLayout>
     <div class="page-header">
       <div class="pick-title">Zestawy i quizy</div>
       <div class="header-actions">
         <button class="btn-sec" @click="showNewSetForm = !showNewSetForm">+ Add new set</button>
-        <button class="btn-sec" :disabled="!selectedDeck" @click="showNewQuizForm = !showNewQuizForm">+ Add new quiz</button>
+        <button type="button" class="btn-sec" :disabled="!selectedDeck" @click="goCreateQuiz">+ Add new quiz</button>
       </div>
     </div>
 
@@ -19,21 +19,10 @@
       </div>
     </div>
 
-    <div v-if="showNewQuizForm" class="new-quiz-box">
-      <div class="form-group">
-        <label>Nazwa quizu</label>
-        <input v-model="newQuizName" type="text" placeholder="np. Quiz powtórkowy" />
-      </div>
-      <div class="new-quiz-actions">
-        <button class="btn-sec" @click="createQuiz" :disabled="!newQuizName.trim()">Utwórz quiz</button>
-        <button class="btn-ghost" @click="cancelNewQuiz">Anuluj</button>
-      </div>
-    </div>
-
     <div v-if="!selectedDeck" class="pick-wrap">
       <div class="pick-title">Wybierz zestaw</div>
       <button
-        v-for="(deck, i) in store.decks"
+        v-for="(deck, i) in decks"
         :key="`deck-${i}`"
         class="pick-item"
         @click="selectDeck(i)"
@@ -43,7 +32,7 @@
       </button>
     </div>
 
-    <div v-else-if="!selectedQuiz" class="pick-wrap">
+    <div v-else class="pick-wrap">
       <div class="pick-head">
         <button class="btn-back" @click="goToSetsList">←</button>
         <div class="pick-title">{{ selectedDeck.name }}</div>
@@ -59,106 +48,36 @@
         @click="selectQuiz(i)"
       >
         <span>{{ quiz.name }}</span>
-        <span class="pick-meta">{{ quiz.questions.length }} pytań</span>
+        <span class="pick-meta">{{ (quiz.questions || []).length }} pytań</span>
       </button>
       <div v-if="(selectedDeck.quizzes || []).length === 0" class="empty-state">
         Ten zestaw nie ma jeszcze quizów.
       </div>
     </div>
-
-    <template v-else>
-      <div class="edit-wrap">
-        <div class="edit-head">
-          <div class="pick-title">Edycja: {{ selectedQuiz.name }}</div>
-        </div>
-
-        <div class="form-group">
-          <label>Nazwa zestawu</label>
-          <input v-model="selectedDeck.name" type="text" />
-        </div>
-
-        <div class="form-group">
-          <label>Nazwa quizu</label>
-          <input v-model="selectedQuiz.name" type="text" />
-        </div>
-
-        <div class="divider"></div>
-        <div class="section-title">Dodaj pytanie</div>
-
-        <div class="form-group">
-          <label>Pytanie</label>
-          <textarea v-model="newQuestionText" rows="2"></textarea>
-        </div>
-        <div class="answers-grid">
-          <div class="form-group answer-item" v-for="(_, i) in newQuestionAnswers" :key="`new-a-${i}`">
-            <label>Odpowiedź {{ i + 1 }}</label>
-            <input v-model="newQuestionAnswers[i]" type="text" />
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Poprawna odpowiedź</label>
-          <select v-model.number="newQuestionCorrect">
-            <option :value="0">Odpowiedź 1</option>
-            <option :value="1">Odpowiedź 2</option>
-            <option :value="2">Odpowiedź 3</option>
-            <option :value="3">Odpowiedź 4</option>
-          </select>
-        </div>
-        <button class="btn-restart" @click="addQuestion">+ Dodaj pytanie</button>
-
-        <div class="divider"></div>
-        <div class="section-title">Pytania w quizie</div>
-        <div v-for="(question, qIndex) in questions" :key="`q-${qIndex}`" class="question-card">
-          <div class="question-row">
-            <div class="question-index">#{{ qIndex + 1 }}</div>
-            <div class="question-actions">
-              <button class="btn-edit" @click="openQuestionEditor(qIndex)">Edytuj odpowiedzi</button>
-              <button class="btn-del" @click="removeQuestion(qIndex)">Usuń</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Treść pytania</label>
-            <textarea v-model="question.q" rows="2"></textarea>
-          </div>
-          <div class="question-summary">
-            Odpowiedzi i poprawna odpowiedź edytujesz na osobnej stronie.
-          </div>
-        </div>
-      </div>
-    </template>
-  </div>
+  </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { store } from '@/entities/store.js'
+import { fetchDecks, createDeck } from '@/api/topics.js'
+import { toastSuccess } from '@/composables/toast.js'
+import AppLayout from "@/layout/AppLayout.vue";
 
 defineEmits(['go'])
 
 const route = useRoute()
 const router = useRouter()
+const decks = ref([])
 const selectedDeckIndex = ref(null)
 const selectedQuizIndex = ref(null)
-const newQuestionText = ref('')
-const newQuestionAnswers = ref(['', '', '', ''])
-const newQuestionCorrect = ref(0)
 const showNewSetForm = ref(false)
 const newSetName = ref('')
-const showNewQuizForm = ref(false)
-const newQuizName = ref('')
 
 const selectedDeck = computed(() => {
   if (selectedDeckIndex.value === null) return null
-  return store.decks[selectedDeckIndex.value]
+  return decks.value[selectedDeckIndex.value]
 })
-
-const selectedQuiz = computed(() => {
-  if (!selectedDeck.value || selectedQuizIndex.value === null) return null
-  return selectedDeck.value.quizzes?.[selectedQuizIndex.value] || null
-})
-
-const questions = computed(() => selectedQuiz.value?.questions || [])
 
 function parseIndex(value) {
   if (value === undefined || value === null || value === '') return null
@@ -166,19 +85,31 @@ function parseIndex(value) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
 }
 
+function resolveDeckIndex(key) {
+  if (key === undefined || key === null || key === '') return null
+  const asNum = parseIndex(key)
+  if (asNum !== null) return asNum
+  const i = decks.value.findIndex(d => String(d.uuid ?? d.id) === String(key))
+  return i >= 0 ? i : null
+}
+
 watch(
   () => route.fullPath,
   () => {
     const rawId = route.params.id
-    const compoundId = typeof rawId === 'string' ? rawId.split('-').map(v => Number(v)) : []
-    if (route.name === 'quiz-edit-by-id' && compoundId.length === 2 && Number.isInteger(compoundId[0]) && Number.isInteger(compoundId[1])) {
-      selectedDeckIndex.value = compoundId[0]
-      selectedQuizIndex.value = compoundId[1]
+    const deckIdx =
+      resolveDeckIndex(rawId) ?? parseIndex(route.query.deck) ?? resolveDeckIndex(route.query.deck)
+    selectedDeckIndex.value = deckIdx
+    const qIdx = parseIndex(route.query.quiz)
+    if (route.name === 'set-edit' && deckIdx !== null && qIdx !== null) {
+      const d = decks.value[deckIdx]
+      if (d) {
+        const deckKey = String(d.uuid ?? d.id ?? deckIdx)
+        router.replace({ name: 'quiz.edit', params: { topic: deckKey, id: `${deckKey}-${qIdx}` } })
+      }
       return
     }
-
-    selectedDeckIndex.value = parseIndex(route.params.id) ?? parseIndex(route.query.deck)
-    selectedQuizIndex.value = parseIndex(route.query.quiz)
+    selectedQuizIndex.value = null
   },
   { immediate: true }
 )
@@ -186,12 +117,20 @@ watch(
 function selectDeck(i) {
   selectedDeckIndex.value = i
   selectedQuizIndex.value = null
-  router.replace({ name: 'set-edit', params: { id: i } })
+  const d = decks.value[i]
+  const param =
+    d?.uuid != null && d.uuid !== ''
+      ? String(d.uuid)
+      : d?.id != null && d.id !== ''
+        ? String(d.id)
+        : String(i)
+  router.replace({ name: 'set-edit', params: { id: param } })
 }
 
 function selectQuiz(i) {
-  selectedQuizIndex.value = i
-  router.replace({ name: 'quiz-edit-by-id', params: { id: `${selectedDeckIndex.value}-${i}` } })
+  const d = selectedDeck.value
+  const deckKey = d ? String(d.uuid ?? d.id ?? selectedDeckIndex.value) : String(selectedDeckIndex.value)
+  router.replace({ name: 'quiz.edit', params: { topic: deckKey, id: `${deckKey}-${i}` } })
 }
 
 function goToSetsList() {
@@ -199,88 +138,44 @@ function goToSetsList() {
   selectedQuizIndex.value = null
   showNewSetForm.value = false
   newSetName.value = ''
-  showNewQuizForm.value = false
-  newQuizName.value = ''
-  router.replace({ name: 'quiz-edit' })
+  router.replace({ name: 'topic' })
 }
 
-function addQuestion() {
-  if (!selectedQuiz.value) return
-  if (!newQuestionText.value.trim()) return
-  if (newQuestionAnswers.value.some(a => !a.trim())) return
-
-  selectedQuiz.value.questions.push({
-    q: newQuestionText.value.trim(),
-    answers: newQuestionAnswers.value.map(a => a.trim()),
-    correct: newQuestionCorrect.value
-  })
-
-  newQuestionText.value = ''
-  newQuestionAnswers.value = ['', '', '', '']
-  newQuestionCorrect.value = 0
+function goCreateQuiz() {
+  const d = selectedDeck.value
+  const topic = d?.uuid ?? d?.id
+  if (topic == null || String(topic) === '') return
+  router.push({ name: 'quiz.create', params: { topic: String(topic) } })
 }
 
-function removeQuestion(index) {
-  if (!selectedQuiz.value) return
-  selectedQuiz.value.questions.splice(index, 1)
-}
-
-function openQuestionEditor(questionIndex) {
-  router.push({
-    name: 'question-edit',
-    query: {
-      deck: selectedDeckIndex.value,
-      quiz: selectedQuizIndex.value,
-      quizEditId: `${selectedDeckIndex.value}-${selectedQuizIndex.value}`,
-      question: questionIndex
-    }
-  })
-}
-
-function createQuiz() {
-  if (!selectedDeck.value) return
-  if (!newQuizName.value.trim()) return
-
-  selectedDeck.value.quizzes.push({
-    name: newQuizName.value.trim(),
-    questions: []
-  })
-
-  selectedQuizIndex.value = selectedDeck.value.quizzes.length - 1
-  router.replace({ name: 'set-edit', params: { id: selectedDeckIndex.value }, query: { quiz: selectedQuizIndex.value } })
-
-  newQuizName.value = ''
-  showNewQuizForm.value = false
-}
-
-function cancelNewQuiz() {
-  newQuizName.value = ''
-  showNewQuizForm.value = false
-}
-
-function createSet() {
+async function createSet() {
   if (!newSetName.value.trim()) return
-  store.decks.push({
-    name: newSetName.value.trim(),
-    icon: '📚',
-    color: '#F1EFE8',
-    fillColor: '#888780',
-    pct: 0,
-    cards: [],
-    quizzes: []
-  })
-  const newIndex = store.decks.length - 1
-  selectedDeckIndex.value = newIndex
-  selectedQuizIndex.value = null
-  newSetName.value = ''
-  showNewSetForm.value = false
-  router.replace({ name: 'set-edit', params: { id: newIndex } })
+  try {
+    const deck = await createDeck(newSetName.value.trim())
+    decks.value.push(deck)
+    toastSuccess('Utworzono zestaw.')
+    newSetName.value = ''
+    showNewSetForm.value = false
+    const id = deck?.uuid ?? deck?.id
+    const param = id != null && String(id) !== '' ? String(id) : String(decks.value.length - 1)
+    await router.replace({ name: 'set-edit', params: { id: param } })
+  } catch {
+    /* store / network error */
+  }
 }
 
 function cancelNewSet() {
   newSetName.value = ''
   showNewSetForm.value = false
 }
+
+onMounted(async () => {
+  try {
+    decks.value = await fetchDecks()
+  } catch {
+    /* ignore — lista może być pusta */
+  }
+})
 </script>
 
 <style scoped>
