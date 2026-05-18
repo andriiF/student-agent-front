@@ -1,6 +1,7 @@
 import { apiFetch } from '@/api/http.js'
-import { normalizeQuiz } from '@/api/normalize.js'
+import { normalizeQuestion, normalizeQuiz } from '@/api/normalize.js'
 import { fetchDeck } from '@/api/topics.js'
+import { fetchQuestion } from '@/api/questions.js'
 
 export async function fetchQuizRow(quizId) {
   if (quizId === undefined || quizId === null || quizId === '') {
@@ -107,4 +108,48 @@ export async function fetchQuizForEdit(topicUuid, routeQuizId) {
   } catch {
     throw new Error('Nie znaleziono quizu.')
   }
+}
+
+function questionHasAnswers(question) {
+  if (!Array.isArray(question?.answers) || !question.answers.length) return false
+  return question.answers.some((a) => {
+    const text = typeof a === 'string' ? a : String(a?.name ?? a?.text ?? '')
+    return text.trim()
+  })
+}
+
+export function isStudyQuestionLoaded(question) {
+  if (!question) return false
+  return (
+    Array.isArray(question.answers) &&
+    question.answers.length > 0 &&
+    question.answers.some((a) => {
+      const text = typeof a === 'string' ? a : String(a?.name ?? a?.text ?? '')
+      return text.trim()
+    })
+  )
+}
+
+/** Quiz do trybu nauki — tylko lista pytań z GET /api/quiz (bez /api/question). */
+export async function fetchQuizForStudy(quizId) {
+  const quiz = await fetchQuizRow(quizId)
+  const questions = Array.isArray(quiz.questions)
+    ? quiz.questions.map(normalizeQuestion).filter(Boolean)
+    : []
+  return { ...quiz, questions }
+}
+
+/** Pełne pytanie z odpowiedziami — GET /api/question/:id */
+export async function loadStudyQuestion(questionStub) {
+  const normalizedStub = normalizeQuestion(questionStub)
+  if (!normalizedStub) return null
+
+  if (questionHasAnswers(questionStub) || isStudyQuestionLoaded(normalizedStub)) {
+    return normalizedStub
+  }
+
+  const id = normalizedStub.uuid ?? questionStub?.uuid ?? questionStub?.id
+  if (!id) return null
+
+  return fetchQuestion(id)
 }

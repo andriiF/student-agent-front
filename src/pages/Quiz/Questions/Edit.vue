@@ -34,17 +34,17 @@
             v-for="(row, i) in answerRows"
             :key="row._rowKey"
             class="answer-row"
-            :class="{ 'answer-row--inactive': !row.isActive }"
+            :class="{ 'answer-row--inactive': !row.is_active }"
         >
           <div class="answer-row-main">
             <label class="answer-num" :for="`answer-text-${i}`">{{ i + 1 }}.</label>
             <input
                 :id="`answer-text-${i}`"
-                v-model="row.text"
+                v-model="row.name"
                 class="answer-text"
                 type="text"
                 :placeholder="`Treść odpowiedzi ${i + 1}`"
-                :disabled="saving || !row.isActive"
+                :disabled="saving || !row.is_active"
             />
           </div>
           <div class="answer-row-expl">
@@ -55,7 +55,7 @@
                 class="answer-expl"
                 rows="2"
                 placeholder="Dlaczego ta odpowiedź jest poprawna lub nie"
-                :disabled="saving || !row.isActive"
+                :disabled="saving || !row.is_active"
             />
           </div>
           <div class="answer-row-checks">
@@ -63,15 +63,15 @@
               <input
                   :id="`answer-correct-${i}`"
                   type="checkbox"
-                  v-model="row.isCorrect"
-                  :disabled="saving || !row.isActive"
+                  v-model="row.is_correct"
+                  :disabled="saving || !row.is_active"
               />
               Poprawna
             </label>
             <label class="chk" :for="`answer-active-${i}`">
               <input
                   :id="`answer-active-${i}`"
-                  v-model="row.isActive"
+                  v-model="row.is_active"
                   type="checkbox"
                   :disabled="saving"
               />
@@ -102,8 +102,9 @@
 <script setup>
 import {ref, computed, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
-import {fetchQuizForEdit} from '@/api/quizzes.js'
-import {fetchQuestion, updateQuestion} from '@/api/questions.js'
+import { fetchQuizForEdit } from '@/api/quizzes.js'
+import { fetchQuestion, updateQuestion } from '@/api/questions.js'
+import { answerRowToPayload, mapQuestionToAnswerRows } from '@/api/normalize.js'
 import {toastSuccess} from '@/composables/toast.js'
 import AppLayout from '@/layout/AppLayout.vue'
 
@@ -135,40 +136,16 @@ function newAnswerRowKey() {
 function newAnswerRow(overrides = {}) {
   return {
     _rowKey: newAnswerRowKey(),
-    text: '',
+    uuid: null,
+    name: '',
     explanation: '',
-    isCorrect: false,
-    isActive: true,
+    is_correct: false,
+    is_active: true,
     ...overrides
   }
 }
 
-
 const answerRows = ref([])
-
-function correctSetFromQuestion(q) {
-  const c = q?.correct
-  if (Array.isArray(c)) return new Set(c.filter(i => Number.isInteger(i) && i >= 0))
-  const n = Number(c)
-  if (Number.isInteger(n) && n >= 0) return new Set([n])
-  return new Set([0])
-}
-
-function mapQuestionToRows(q) {
-  const rawAnswers = Array.isArray(q?.answers) ? q.answers : []
-  if (!rawAnswers.length) return [newAnswerRow({isCorrect: true})]
-
-
-  return rawAnswers.map((a, i) => {
-    const text = typeof a === 'string' ? a : String(a?.text ?? a?.name ?? '')
-    return newAnswerRow({
-      text,
-      explanation: a.explanation ?? '',
-      isActive: a.is_active,
-      isCorrect: a.is_correct
-    })
-  })
-}
 
 const selectedQuiz = computed(() => {
   if (!selectedDeck.value || selectedQuizIndex.value === null) return null
@@ -182,9 +159,9 @@ const resolved = computed(() =>
 const canSubmit = computed(() => {
   const name = questionText.value.trim()
   if (!name || name.length > 255) return false
-  const activeAnswers = answerRows.value.filter(r => r.isActive && r.text.trim())
+  const activeAnswers = answerRows.value.filter((r) => r.is_active && r.name.trim())
   if (activeAnswers.length === 0) return false
-  return activeAnswers.some(r => r.isCorrect)
+  return activeAnswers.some((r) => r.is_correct)
 })
 
 function buildQuestionPayload() {
@@ -197,13 +174,7 @@ function buildQuestionPayload() {
   if (!name) throw new Error('Podaj treść pytania.')
   if (name.length > 255) throw new Error('Pytanie może mieć maksymalnie 255 znaków.')
 
-  const answers = answerRows.value.map(r => ({
-    uuid: r.uuid ?? null,
-    name: r.text.trim(),
-    explanation: (r.explanation ?? '').trim(),
-    is_correct: Boolean(r.isCorrect && r.isActive && r.text.trim()),
-    is_active: Boolean(r.isActive)
-  }))
+  const answers = answerRows.value.map((r) => answerRowToPayload(r))
 
   return {
     name,
@@ -220,10 +191,10 @@ function addAnswerRow() {
 function removeAnswerRow(index) {
   if (answerRows.value.length <= MIN_ANSWER_ROWS) return
   answerRows.value.splice(index, 1)
-  const activeWithText = answerRows.value.filter(r => r.isActive && r.text.trim())
-  if (!activeWithText.some(r => r.isCorrect)) {
-    const first = activeWithText[0] ?? answerRows.value.find(r => r.isActive)
-    if (first) first.isCorrect = true
+  const activeWithText = answerRows.value.filter((r) => r.is_active && r.name.trim())
+  if (!activeWithText.some((r) => r.is_correct)) {
+    const first = activeWithText[0] ?? answerRows.value.find((r) => r.is_active)
+    if (first) first.is_correct = true
   }
 }
 
@@ -247,7 +218,9 @@ async function loadContext() {
 
     questionUuid.value = question.uuid ?? question.id ?? qid
     questionText.value = question.q ?? question.name ?? ''
-    answerRows.value = mapQuestionToRows(question)
+    answerRows.value = mapQuestionToAnswerRows(question).map((row) =>
+      newAnswerRow(row)
+    )
 
   } catch (e) {
     loadError.value = e?.message || 'Nie udało się wczytać pytania.'

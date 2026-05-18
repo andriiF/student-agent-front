@@ -33,17 +33,17 @@
           v-for="(row, i) in answerRows"
           :key="row._rowKey"
           class="answer-row"
-          :class="{ 'answer-row--inactive': !row.isActive }"
+          :class="{ 'answer-row--inactive': !row.is_active }"
         >
           <div class="answer-row-main">
             <label class="answer-num" :for="`answer-text-${i}`">{{ i + 1 }}.</label>
             <input
               :id="`answer-text-${i}`"
-              v-model="row.text"
+              v-model="row.name"
               class="answer-text"
               type="text"
               :placeholder="`Treść odpowiedzi ${i + 1}`"
-              :disabled="saving || !row.isActive"
+              :disabled="saving || !row.is_active"
             />
           </div>
           <div class="answer-row-expl">
@@ -54,7 +54,7 @@
               class="answer-expl"
               rows="2"
               :placeholder="`Dlaczego ta odpowiedź jest poprawna lub nie`"
-              :disabled="saving || !row.isActive"
+              :disabled="saving || !row.is_active"
             />
           </div>
           <div class="answer-row-checks">
@@ -62,8 +62,8 @@
               <input
                 :id="`answer-correct-${i}`"
                 type="checkbox"
-                v-model="row.isCorrect"
-                :disabled="saving || !row.isActive"
+                v-model="row.is_correct"
+                :disabled="saving || !row.is_active"
                 @change="onCorrectCheckboxChange(i)"
               />
               Poprawna
@@ -71,7 +71,7 @@
             <label class="chk" :for="`answer-active-${i}`">
               <input
                 :id="`answer-active-${i}`"
-                v-model="row.isActive"
+                v-model="row.is_active"
                 type="checkbox"
                 :disabled="saving"
                 @change="onActiveChange(i)"
@@ -105,6 +105,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchQuizForEdit } from '@/api/quizzes.js'
 import { createQuestion } from '@/api/questions.js'
+import { answerRowToPayload } from '@/api/normalize.js'
 import { toastSuccess } from '@/composables/toast.js'
 import AppLayout from '@/layout/AppLayout.vue'
 
@@ -132,10 +133,10 @@ function newAnswerRowKey() {
 function newAnswerRow(overrides = {}) {
   return {
     _rowKey: newAnswerRowKey(),
-    text: '',
+    name: '',
     explanation: '',
-    isCorrect: false,
-    isActive: true,
+    is_correct: false,
+    is_active: true,
     ...overrides
   }
 }
@@ -158,9 +159,9 @@ const resolved = computed(() => Boolean(selectedDeck.value && selectedQuiz.value
 const canSubmit = computed(() => {
   const name = newQuestionText.value.trim()
   if (!name || name.length > 255) return false
-  const activeAnswers = answerRows.value.filter(r => r.isActive && r.text.trim())
+  const activeAnswers = answerRows.value.filter((r) => r.is_active && r.name.trim())
   if (activeAnswers.length < MIN_ANSWER_ROWS) return false
-  return activeAnswers.some(r => r.isCorrect)
+  return activeAnswers.some((r) => r.is_correct)
 })
 
 function buildQuestionPayload() {
@@ -173,12 +174,7 @@ function buildQuestionPayload() {
   if (!name) throw new Error('Podaj treść pytania.')
   if (name.length > 255) throw new Error('Pytanie może mieć maksymalnie 255 znaków.')
 
-  const answers = answerRows.value.map(r => ({
-    name: r.text.trim(),
-    explanation: (r.explanation ?? '').trim(),
-    is_correct: Boolean(r.isCorrect && r.isActive && r.text.trim()),
-    is_active: Boolean(r.isActive)
-  }))
+  const answers = answerRows.value.map((r) => answerRowToPayload(r))
 
   return {
     name,
@@ -189,26 +185,26 @@ function buildQuestionPayload() {
 
 function onCorrectCheckboxChange(index) {
   const row = answerRows.value[index]
-  if (!row.isActive) {
-    row.isCorrect = false
+  if (!row.is_active) {
+    row.is_correct = false
     return
   }
-  const activeWithText = answerRows.value.filter(r => r.isActive && r.text.trim())
-  const anyCorrect = activeWithText.some(r => r.isCorrect)
+  const activeWithText = answerRows.value.filter((r) => r.is_active && r.name.trim())
+  const anyCorrect = activeWithText.some((r) => r.is_correct)
   if (!anyCorrect) {
     const first = activeWithText[0]
-    if (first) first.isCorrect = true
-    else row.isCorrect = true
+    if (first) first.is_correct = true
+    else row.is_correct = true
   }
 }
 
 function onActiveChange(index) {
   const row = answerRows.value[index]
-  if (!row.isActive) {
-    row.isCorrect = false
-    if (!answerRows.value.some(r => r.isCorrect && r.isActive && r.text.trim())) {
-      const first = answerRows.value.find(r => r.isActive && r.text.trim())
-      if (first) first.isCorrect = true
+  if (!row.is_active) {
+    row.is_correct = false
+    if (!answerRows.value.some((r) => r.is_correct && r.is_active && r.name.trim())) {
+      const first = answerRows.value.find((r) => r.is_active && r.name.trim())
+      if (first) first.is_correct = true
     }
   }
 }
@@ -220,10 +216,10 @@ function addAnswerRow() {
 function removeAnswerRow(index) {
   if (answerRows.value.length <= MIN_ANSWER_ROWS) return
   answerRows.value.splice(index, 1)
-  const activeWithText = answerRows.value.filter(r => r.isActive && r.text.trim())
-  if (!activeWithText.some(r => r.isCorrect)) {
-    const first = activeWithText[0] ?? answerRows.value.find(r => r.isActive)
-    if (first) first.isCorrect = true
+  const activeWithText = answerRows.value.filter((r) => r.is_active && r.name.trim())
+  if (!activeWithText.some((r) => r.is_correct)) {
+    const first = activeWithText[0] ?? answerRows.value.find((r) => r.is_active)
+    if (first) first.is_correct = true
   }
 }
 

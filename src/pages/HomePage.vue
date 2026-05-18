@@ -19,101 +19,78 @@
     </div>
 
     <div class="deck-header">
-      <template v-if="selectedDeckIndex === null">
-        <span class="deck-title">Twoje zestawy</span>
-      </template>
-      <template v-else>
-        <div class="deck-title-wrap">
-          <button class="btn-back" @click="selectedDeckIndex = null">←</button>
-          <span class="deck-title">Quizy: {{ selectedDeck.name }}</span>
-        </div>
-      </template>
+      <span class="deck-title">Twoje zestawy</span>
     </div>
 
-    <div class="decks-grid">
-      <div
-        v-for="(item, i) in gridItems"
-        :key="i"
+    <div v-if="loadError" class="empty-note">{{ loadError }}</div>
+    <div v-else-if="loadLoading" class="empty-note">Ładowanie zestawów…</div>
+
+    <div v-else class="decks-grid">
+      <button
+        v-for="(deck, i) in decks"
+        :key="deck.uuid ?? deck.id ?? `deck-${i}`"
+        type="button"
         class="deck-cube"
-        @click="onCubeClick(i)"
+        @click="openDeck(deck)"
       >
         <div class="cube-top">
-          <div class="deck-icon" :style="{ background: item.color }">{{ item.icon }}</div>
+          <div class="deck-icon" :style="{ background: deck.color }">{{ deck.icon }}</div>
         </div>
         <div class="deck-info">
-          <div class="deck-name">{{ item.name }}</div>
-          <div class="deck-meta">{{ item.meta }}</div>
+          <div class="deck-name">{{ deck.name }}</div>
+          <div class="deck-meta">{{ (deck.quizzes || []).length }} quizów</div>
         </div>
         <div class="deck-progress">
-          <div class="pct">{{ item.pct }}%</div>
+          <div class="pct">{{ deck.pct || 0 }}%</div>
           <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: item.pct + '%', background: item.fillColor }"></div>
+            <div
+              class="progress-fill"
+              :style="{ width: (deck.pct || 0) + '%', background: deck.fillColor }"
+            ></div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div v-if="selectedDeckIndex !== null && gridItems.length === 0" class="empty-note">
-      Ten zestaw nie ma jeszcze quizów.
+      </button>
     </div>
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { fetchDecks } from '@/api/topics.js'
-import AppLayout from "@/layout/AppLayout.vue";
+import {
+  applyProgressToDecks,
+  buildProgressMap,
+  fetchUserProgressSafe
+} from '@/api/progress.js'
+import AppLayout from '@/layout/AppLayout.vue'
 
-const emit = defineEmits(['run-quiz'])
-
+const router = useRouter()
 const todayCount = ref(0)
 const decks = ref([])
-const selectedDeckIndex = ref(null)
+const loadLoading = ref(true)
+const loadError = ref('')
 
-const selectedDeck = computed(() => {
-  if (selectedDeckIndex.value === null) return null
-  return decks.value[selectedDeckIndex.value]
-})
-
-const gridItems = computed(() => {
-  if (selectedDeckIndex.value === null) {
-    return decks.value.map(deck => ({
-      name: deck.name,
-      icon: deck.icon,
-      color: deck.color,
-      fillColor: deck.fillColor,
-      pct: deck.pct || 0,
-      meta: `${(deck.quizzes || []).length} quizów`
-    }))
-  }
-
-  return (selectedDeck.value?.quizzes || []).map(quiz => ({
-    name: quiz.name,
-    icon: '❓',
-    color: selectedDeck.value.color,
-    fillColor: selectedDeck.value.fillColor,
-    pct: 0,
-    meta: `${quiz.questions.length} pytań`
-  }))
-})
-
-function onCubeClick(i) {
-  if (selectedDeckIndex.value === null) {
-    selectedDeckIndex.value = i
-    return
-  }
-
-  emit('run-quiz', {
-    deckIndex: selectedDeckIndex.value,
-    quizIndex: i
-  })
+function openDeck(deck) {
+  const topicId = deck?.uuid ?? deck?.id
+  if (!topicId) return
+  router.push({ name: 'dashboard.topic', params: { topicId: String(topicId) } })
 }
 
 onMounted(async () => {
+  loadError.value = ''
+  loadLoading.value = true
   try {
-    decks.value = await fetchDecks()
-  } catch {
-    /* ignore */
+    const [decksData, progressData] = await Promise.all([
+      fetchDecks(),
+      fetchUserProgressSafe()
+    ])
+    const progressMap = buildProgressMap(progressData)
+    decks.value = applyProgressToDecks(decksData, progressMap)
+  } catch (e) {
+    loadError.value = e?.message || 'Nie udało się pobrać zestawów.'
+  } finally {
+    loadLoading.value = false
   }
 })
 </script>
@@ -125,11 +102,9 @@ onMounted(async () => {
 .stat-value { font-size: 24px; font-weight: 500; }
 .stat-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 .deck-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-.deck-title-wrap { display: flex; align-items: center; gap: 8px; }
 .deck-title { font-size: 16px; font-weight: 500; }
-.btn-back { background: transparent; border: none; font-size: 20px; color: var(--text-secondary); padding: 2px 4px; line-height: 1; }
 .decks-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.deck-cube { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; cursor: pointer; min-height: 210px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.15s, transform 0.15s; }
+.deck-cube { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; cursor: pointer; min-height: 210px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.15s, transform 0.15s; text-align: left; width: 100%; }
 .deck-cube:hover { border-color: var(--border-hover); transform: translateY(-1px); }
 .cube-top { display: flex; align-items: center; gap: 10px; }
 .deck-icon { width: 44px; height: 44px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }

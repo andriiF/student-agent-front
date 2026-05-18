@@ -7,6 +7,8 @@ const routes = [
     {path: '/login', name: 'login', component: LoginPage},
     {path: '/register', name: 'register', component: RegisterPage},
     {path: '/dashboard', name: 'dashboard', component: () => import('@/pages/HomePage.vue')},
+    {path: '/quizz/topic/:topicId', name: 'dashboard.topic', component: () => import('@/pages/Study/TopicQuizzesPage.vue')},
+    {path: '/quizz/topic/:topicId/quiz/:quizId', name: 'study.quiz', component: () => import('@/pages/Study/QuizStudyPage.vue')},
     {path: '/topic', name: 'topic', component: () => import('@/pages/Quiz/Sets/Index.vue')},
     {path: '/topic/new', name: 'topic.create', component: () => import('@/pages/Quiz/Sets/Create.vue')},
     {path: '/topic/:id/edit', name: 'topic.edit', component: () => import('@/pages/Quiz/Sets/Edit.vue')},
