@@ -8,11 +8,20 @@ services:
     image: studyflow-front:latest
     container_name: studyflow-front
     restart: unless-stopped
-    ports:
-      - "${HTTP_PORT:-8080}:80"
+
+    expose:
+      - "80"
+
+    networks:
+      - gateway
+
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 10s
+
+networks:
+  gateway:
+    external: true
