@@ -1,13 +1,22 @@
 import { apiFetch } from '@/api/http.js'
 
+/** answer_id z API: jeden string lub tablica stringów. */
+export function normalizeAnswerIds(raw) {
+  if (raw == null || raw === '') return []
+  if (Array.isArray(raw)) {
+    return raw.map((id) => String(id)).filter((id) => id !== '')
+  }
+  return [String(raw)]
+}
+
 function normalizeProgressRow(raw) {
   if (!raw || typeof raw !== 'object') return null
   const questionId = raw.question_id ?? raw.questionId
   if (!questionId) return null
-  const answerId = raw.answer_id ?? raw.answerId ?? null
+  const answerIds = normalizeAnswerIds(raw.answer_id ?? raw.answerId ?? null)
   const row = {
     question_id: String(questionId),
-    answer_id: answerId != null && String(answerId) !== '' ? String(answerId) : null
+    answer_id: answerIds.length === 0 ? null : answerIds.length === 1 ? answerIds[0] : answerIds
   }
   if (raw.is_correct !== undefined || raw.isCorrect !== undefined) {
     row.is_correct = Boolean(raw.is_correct ?? raw.isCorrect)
@@ -24,7 +33,10 @@ export function countCorrectFromQuizPlayProgress(progressAnswers) {
 export function isQuizFullyAnsweredInProgress(progressAnswers, questionCount) {
   if (!questionCount) return false
   const rows = Array.isArray(progressAnswers) ? progressAnswers : []
-  const answered = rows.filter((r) => r?.question_id && r?.answer_id).length
+  const answered = rows.filter((r) => {
+    if (!r?.question_id) return false
+    return normalizeAnswerIds(r.answer_id).length > 0
+  }).length
   return answered >= questionCount
 }
 
@@ -61,20 +73,24 @@ export function applyProgressToQuestionStates(questions, progressAnswers) {
     if (qIndex < 0) continue
 
     const question = list[qIndex]
-    const answerId = row.answer_id
-
-    if (answerId == null) {
-      states[qIndex] = { selectedIndex: null, revealed: false }
+    const answerIds = normalizeAnswerIds(row.answer_id)
+    if (!answerIds.length) {
+      states[qIndex] = { selectedIndices: [], revealed: false }
       continue
     }
 
-    const aIndex = (question.answers ?? []).findIndex(
-      (a) => String(a?.uuid ?? a?.id) === String(answerId)
-    )
-    if (aIndex < 0) continue
+    const selectedIndices = answerIds
+      .map((aid) =>
+        (question.answers ?? []).findIndex(
+          (a) => String(a?.uuid ?? a?.id) === String(aid)
+        )
+      )
+      .filter((i) => i >= 0)
+
+    if (!selectedIndices.length) continue
 
     const state = {
-      selectedIndex: aIndex,
+      selectedIndices,
       revealed: true
     }
     if (typeof row.is_correct === 'boolean') {
@@ -145,8 +161,14 @@ export async function saveQuizPlayAnswer(quizUuid, { questionId, answerId }) {
   const id = encodeURIComponent(String(quizUuid))
   const body = { question_id: String(questionId) }
 
-  if (answerId != null && String(answerId) !== '') {
-    body.answer_id = String(answerId)
+  if (answerId != null) {
+    if (Array.isArray(answerId)) {
+      const ids = answerId.map((id) => String(id)).filter((id) => id !== '')
+      if (ids.length === 1) body.answer_id = ids[0]
+      else if (ids.length > 1) body.answer_id = ids
+    } else if (String(answerId) !== '') {
+      body.answer_id = String(answerId)
+    }
   }
 
   const { data } = await apiFetch(`/api/quizplay/${id}`, {

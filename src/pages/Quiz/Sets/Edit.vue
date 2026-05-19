@@ -40,27 +40,96 @@
         </div>
         <div v-if="quizzes.length === 0" class="empty-state">Brak quizów w tym zestawie.</div>
         <div v-else class="quiz-list">
-          <RouterLink
-              v-for="(quiz, i) in quizzes"
-              :key="quiz.uuid ?? quiz.id ?? `q-${i}`"
-              class="pick-item"
-              :to="{ name: 'quiz.edit', params: { topic: topicId, id:quiz.uuid } }"
+          <div class="quiz-list-toolbar">
+            <label class="quiz-select-all chk">
+              <input
+                ref="selectAllInput"
+                type="checkbox"
+                :checked="allSelected"
+                @change="toggleSelectAll"
+              />
+              Zaznacz wszystkie
+            </label>
+            <button
+              v-if="someSelected"
+              type="button"
+              class="btn-share"
+              @click="shareSelected"
+            >
+              Udostępnij
+            </button>
+          </div>
+          <div
+            v-for="(quiz, i) in quizzes"
+            :key="quiz.uuid ?? quiz.id ?? `q-${i}`"
+            class="pick-item pick-item--with-check"
           >
-            <span>{{ quiz.name }}</span>
-            <span class="pick-meta">{{ (quiz.questions || []).length }} pytań</span>
-          </RouterLink>
+            <label class="quiz-check chk" @click.stop>
+              <input
+                type="checkbox"
+                :checked="isQuizSelected(quiz)"
+                @change="toggleQuiz(quiz)"
+              />
+            </label>
+            <RouterLink
+              class="pick-item-link"
+              :to="{ name: 'quiz.edit', params: { topic: topicId, id: quiz.uuid ?? quiz.id } }"
+            >
+              <span>{{ quiz.name }}</span>
+              <span class="pick-meta">{{ (quiz.questions || []).length }} pytań</span>
+            </RouterLink>
+          </div>
         </div>
       </div>
     </template>
   </AppLayout>
+
+  <Modal
+    title="Udostępnij quizy"
+    :open="shareModalOpen"
+    @close="closeShareModal"
+  >
+    <form class="share-form" @submit.prevent="submitShare">
+      <div class="form-group">
+        <label for="share-email">Adres e-mail</label>
+        <input
+          id="share-email"
+          v-model="shareEmail"
+          type="email"
+          autocomplete="email"
+          placeholder="np. jan@example.com"
+          :disabled="shareLoading"
+        />
+        <p v-if="shareError" class="err">{{ shareError }}</p>
+      </div>
+      <div class="modal-actions">
+        <button
+          type="button"
+          class="btn-modal-cancel"
+          :disabled="shareLoading"
+          @click="closeShareModal"
+        >
+          Anuluj
+        </button>
+        <button
+          type="submit"
+          class="btn-save"
+          :disabled="shareLoading || !shareEmail.trim()"
+        >
+          {{ shareLoading ? 'Wysyłanie…' : 'Udostępnij' }}
+        </button>
+      </div>
+    </form>
+  </Modal>
 </template>
 
 <script setup>
-import {ref, computed, watch} from 'vue'
-import {useRoute} from 'vue-router'
+import { ref, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { fetchDeck, updateTopic } from '@/api/topics.js'
-import {toastSuccess} from '@/composables/toast.js'
+import { toastSuccess } from '@/composables/toast.js'
 import AppLayout from '@/layout/AppLayout.vue'
+import Modal from '@/components/modal/Modal.vue'
 
 const route = useRoute()
 const deck = ref(null)
@@ -70,20 +139,101 @@ const loadError = ref('')
 const saveLoading = ref(false)
 const formError = ref('')
 const validationErrors = ref({})
+const selectedQuizIds = ref(new Set())
+const selectAllInput = ref(null)
+const shareModalOpen = ref(false)
+const shareEmail = ref('')
+const shareError = ref('')
+const shareLoading = ref(false)
 
 const topicId = computed(() => String(route.params.id ?? ''))
 
 const quizzes = computed(() => deck.value?.quizzes ?? [])
 
-const deckKey = computed(() => {
-  const d = deck.value
-  if (!d) return topicId.value
-  return String(d.uuid ?? d.id ?? topicId.value)
-})
-
 const fieldErrors = computed(() => ({
   name: validationErrors.value.name || []
 }))
+
+const allSelected = computed(() => {
+  const list = quizzes.value
+  if (!list.length) return false
+  return list.every((q) => isQuizSelected(q))
+})
+
+const someSelected = computed(() => quizzes.value.some((q) => isQuizSelected(q)))
+
+function quizKey(quiz) {
+  return String(quiz?.uuid ?? quiz?.id ?? '')
+}
+
+function isQuizSelected(quiz) {
+  const id = quizKey(quiz)
+  return Boolean(id) && selectedQuizIds.value.has(id)
+}
+
+function toggleQuiz(quiz) {
+  const id = quizKey(quiz)
+  if (!id) return
+  const next = new Set(selectedQuizIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedQuizIds.value = next
+}
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectedQuizIds.value = new Set()
+    return
+  }
+  selectedQuizIds.value = new Set(
+    quizzes.value.map((q) => quizKey(q)).filter(Boolean)
+  )
+}
+
+function shareSelected() {
+  shareError.value = ''
+  shareEmail.value = ''
+  shareModalOpen.value = true
+}
+
+function closeShareModal() {
+  if (shareLoading.value) return
+  shareModalOpen.value = false
+  shareEmail.value = ''
+  shareError.value = ''
+}
+
+async function submitShare() {
+  const email = shareEmail.value.trim()
+  if (!email) {
+    shareError.value = 'Podaj adres e-mail.'
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    shareError.value = 'Podaj poprawny adres e-mail.'
+    return
+  }
+
+  shareLoading.value = true
+  shareError.value = ''
+  try {
+    // TODO: API udostępniania — quiz_ids: [...selectedQuizIds.value]
+    closeShareModal()
+    toastSuccess('Udostępniono quizy.')
+  } catch (e) {
+    shareError.value = e?.message || 'Nie udało się udostępnić quizów.'
+  } finally {
+    shareLoading.value = false
+  }
+}
+
+function syncSelectAllIndeterminate() {
+  const el = selectAllInput.value
+  if (!el) return
+  el.indeterminate = someSelected.value && !allSelected.value
+}
+
+watch([allSelected, someSelected], syncSelectAllIndeterminate)
 
 async function load() {
   const id = topicId.value
@@ -94,6 +244,7 @@ async function load() {
   }
   loadError.value = ''
   loadLoading.value = true
+  selectedQuizIds.value = new Set()
   try {
     const d = await fetchDeck(id)
     deck.value = d
@@ -106,11 +257,11 @@ async function load() {
 }
 
 watch(
-    () => route.params.id,
-    () => {
-      load()
-    },
-    {immediate: true}
+  () => route.params.id,
+  () => {
+    load()
+  },
+  { immediate: true }
 )
 
 async function saveName() {
@@ -135,6 +286,3 @@ async function saveName() {
 }
 </script>
 
-<style scoped>
-
-</style>

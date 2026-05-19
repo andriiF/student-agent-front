@@ -57,16 +57,3 @@ function logout() {
 }
 </script>
 
-<style scoped>
-.profile-card { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 16px; }
-.avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--purple-light); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; color: var(--purple-text); flex-shrink: 0; }
-.prof-name { font-size: 18px; font-weight: 500; }
-.prof-email { font-size: 14px; color: var(--text-secondary); margin-top: 2px; }
-.prof-since { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
-.profile-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.5rem; }
-.stat { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 1rem; }
-.stat-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
-.stat-value { font-size: 24px; font-weight: 500; }
-.btn-logout { width: 100%; padding: 10px; border-radius: var(--radius-md); border: 0.5px solid var(--border-hover); background: transparent; font-size: 14px; color: var(--danger); cursor: pointer; }
-.btn-logout:hover { background: var(--danger-light); }
-</style>

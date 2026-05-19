@@ -172,29 +172,3 @@ onMounted(async () => {
 })
 </script>
 
-<style scoped>
-.pick-wrap { display: flex; flex-direction: column; gap: 10px; }
-.pick-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.pick-title { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
-.pick-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: var(--radius-md); border: 0.5px solid var(--border); background: var(--bg-primary); font-size: 14px; text-align: left; }
-.pick-item:hover { border-color: var(--border-hover); background: var(--bg-secondary); }
-.pick-meta { font-size: 12px; color: var(--text-secondary); }
-.empty-state { font-size: 13px; color: var(--text-secondary); background: var(--bg-secondary); border-radius: var(--radius-md); padding: 12px; }
-.btn-back { background: transparent; border: none; font-size: 20px; color: var(--text-secondary); padding: 4px; line-height: 1; }
-.qp-row { display: flex; gap: 6px; margin-bottom: 1.5rem; }
-.qp-dot { flex: 1; height: 4px; border-radius: 2px; background: var(--bg-secondary); }
-.qp-dot.done { background: var(--purple); }
-.qp-dot.cur { background: #AFA9EC; }
-.quiz-q { font-size: 16px; font-weight: 500; margin-bottom: 1.5rem; line-height: 1.5; }
-.quiz-opts { display: flex; flex-direction: column; gap: 10px; }
-.quiz-opt { padding: 12px 16px; border-radius: var(--radius-md); border: 0.5px solid var(--border); background: var(--bg-primary); font-size: 15px; text-align: left; transition: all 0.15s; }
-.quiz-opt:hover:not(.correct):not(.wrong) { border-color: var(--border-hover); background: var(--bg-secondary); }
-.quiz-opt.correct { border-color: var(--success); background: var(--success-light); color: #0F6E56; }
-.quiz-opt.wrong { border-color: var(--danger); background: var(--danger-light); color: #A32D2D; }
-.quiz-score { text-align: center; padding: 2rem; background: var(--bg-secondary); border-radius: var(--radius-lg); }
-.score-val { font-size: 48px; font-weight: 500; }
-.score-label { font-size: 16px; color: var(--text-secondary); margin-top: 4px; }
-.score-pct { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
-.btn-restart { margin-top: 1.5rem; padding: 10px 24px; border-radius: var(--radius-md); border: 0.5px solid var(--border-hover); background: transparent; font-size: 14px; }
-.btn-restart:hover { background: var(--bg-primary); }
-</style>

@@ -1,0 +1,96 @@
+.quiz-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.quiz-select-all {
+  padding: 4px 2px 8px;
+  margin-bottom: 0;
+}
+
+.btn-share {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--purple);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-share:hover {
+  background: var(--purple-dark);
+}
+
+.pick-item--with-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-block: 0.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.pick-item--with-check:hover {
+  border: none;
+  background: transparent;
+}
+
+.quiz-check {
+  flex-shrink: 0;
+  padding: 12px 0 12px 14px;
+}
+
+.pick-item-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--border);
+  background: var(--bg-primary);
+  font-size: 14px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.pick-item-link:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-secondary);
+}
+
+.share-form .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-modal-cancel {
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--border-hover);
+  background: transparent;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.btn-modal-cancel:hover:not(:disabled) {
+  background: var(--bg-secondary);
+}
+
+.btn-modal-cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

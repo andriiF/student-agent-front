@@ -170,20 +170,3 @@ onMounted(async () => {
 })
 </script>
 
-<style scoped>
-.edit-wrap { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; }
-.pick-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.pick-title { font-size: 16px; font-weight: 500; }
-.btn-back { background: transparent; border: none; font-size: 20px; color: var(--text-secondary); padding: 4px; line-height: 1; }
-.context-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.context-item { font-size: 13px; color: var(--text-secondary); }
-.form-group { margin-bottom: 0.8rem; }
-.form-group label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
-.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border-hover); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
-.answers-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 0.5rem; }
-.answer-block { padding: 10px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border-hover); background: var(--bg-secondary); }
-.chk { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; user-select: none; margin-top: 4px; }
-.chk input { width: auto; margin: 0; cursor: pointer; }
-.btn-save { margin-top: 6px; padding: 10px 16px; border-radius: var(--radius-md); border: none; background: var(--purple); color: #fff; font-size: 14px; }
-.empty-state { font-size: 13px; color: var(--text-secondary); background: var(--bg-secondary); border-radius: var(--radius-md); padding: 12px; }
-</style>

@@ -81,6 +81,10 @@
 
       <div class="quiz-q">{{ currentQuestion.name }}</div>
 
+      <p v-if="isMultiSelect && !revealed" class="multi-hint">
+        Zaznacz wszystkie poprawne odpowiedzi, potem potwierdź wybór.
+      </p>
+
       <div class="quiz-opts">
         <button
           v-for="(answer, i) in currentQuestion.answers"
@@ -89,7 +93,7 @@
           class="quiz-opt"
           :class="optionClass(i)"
           :disabled="revealed"
-          @click="selectAnswer(i)"
+          @click="onAnswerClick(i)"
         >
           {{ answer.name }}
         </button>
@@ -122,6 +126,14 @@
           Poprzednie pytanie
         </button>
         <button
+          v-if="isMultiSelect && !revealed && selectedIndices.length"
+          type="button"
+          class="btn-action"
+          @click="confirmMultiAnswer"
+        >
+          Sprawdź odpowiedź
+        </button>
+        <button
           v-if="revealed"
           type="button"
           class="btn-action btn-action--next"
@@ -149,6 +161,7 @@ import {
   fetchQuizPlayProgress,
   getResumeQuestionIndexFromProgress,
   isQuizFullyAnsweredInProgress,
+  normalizeAnswerIds,
   saveQuizPlayAnswer
 } from '@/api/quizplay.js'
 import AppLayout from '@/layout/AppLayout.vue'
@@ -165,7 +178,7 @@ const loadError = ref('')
 const quizProgress = ref([])
 
 const currentIndex = ref(0)
-const selectedIndex = ref(null)
+const selectedIndices = ref([])
 const revealed = ref(false)
 const questionStates = ref({})
 const finished = ref(false)
@@ -200,8 +213,9 @@ const score = computed(() => {
     if (!state?.revealed) return false
     if (typeof state.isCorrect === 'boolean') return state.isCorrect
     const q = questions.value[Number(index)]
-    if (!q || state.selectedIndex == null) return false
-    return (q.correctIndices ?? []).includes(state.selectedIndex)
+    const indices = getStateSelectedIndices(state)
+    if (!q || !indices.length) return false
+    return isQuestionAnswerCorrect(q, indices)
   }).length
 })
 
@@ -210,14 +224,16 @@ const correctIndexSet = computed(() => {
   return new Set(indices)
 })
 
+const isMultiSelect = computed(() => allowsMultipleAnswers(currentQuestion.value))
+
 const isCurrentCorrect = computed(() => {
-  if (selectedIndex.value === null) return false
-  return correctIndexSet.value.has(selectedIndex.value)
+  if (!selectedIndices.value.length) return false
+  return isQuestionAnswerCorrect(currentQuestion.value, selectedIndices.value)
 })
 
 const explanationBlocks = computed(() => {
   const q = currentQuestion.value
-  if (!q || selectedIndex.value === null) return []
+  if (!q || !selectedIndices.value.length) return []
 
   const blocks = []
   const seen = new Set()
@@ -242,26 +258,65 @@ const explanationBlocks = computed(() => {
     addBlock(i)
   }
 
-  if (!correctIndexSet.value.has(selectedIndex.value)) {
-    addBlock(selectedIndex.value, true)
+  for (const i of selectedIndices.value) {
+    if (!correctIndexSet.value.has(i)) {
+      addBlock(i, true)
+    }
   }
 
   return blocks
 })
 
-function optionClass(index) {
-  if (!revealed.value) return {}
-  const isCorrect = correctIndexSet.value.has(index)
-  const isSelected = index === selectedIndex.value
-  return {
-    correct: isCorrect,
-    wrong: isSelected && !isCorrect
-  }
+function allowsMultipleAnswers(question) {
+  return (question?.correctIndices ?? []).length > 1
 }
 
-function isAnswerCorrect(question, answerIndex) {
-  if (!question || answerIndex == null) return false
-  return (question.correctIndices ?? []).includes(answerIndex)
+function setsEqual(a, b) {
+  const left = [...a].sort((x, y) => x - y)
+  const right = [...b].sort((x, y) => x - y)
+  if (left.length !== right.length) return false
+  return left.every((val, i) => val === right[i])
+}
+
+function isQuestionAnswerCorrect(question, indices) {
+  const correct = question?.correctIndices ?? []
+  const selected = Array.isArray(indices) ? indices : []
+  return setsEqual(selected, correct)
+}
+
+function getStateSelectedIndices(state) {
+  if (Array.isArray(state?.selectedIndices) && state.selectedIndices.length) {
+    return [...state.selectedIndices]
+  }
+  if (state?.selectedIndex != null) return [state.selectedIndex]
+  return []
+}
+
+function answerIdsFromIndices(question, indices) {
+  return indices
+    .map((i) => question?.answers?.[i])
+    .map((a) => a?.uuid ?? a?.id ?? null)
+    .filter((id) => id != null && String(id) !== '')
+    .map(String)
+}
+
+function toAnswerIdPayload(answerIds) {
+  if (!answerIds.length) return null
+  if (answerIds.length === 1) return answerIds[0]
+  return answerIds
+}
+
+function optionClass(index) {
+  const isSelected = selectedIndices.value.includes(index)
+  if (!revealed.value) {
+    return { selected: isSelected && isMultiSelect.value }
+  }
+  const isCorrect = correctIndexSet.value.has(index)
+  return {
+    correct: isCorrect,
+    wrong: isSelected && !isCorrect,
+    picked: isSelected
+  }
 }
 
 function upsertQuizProgressRow(questionId, answerId, isCorrect) {
@@ -279,12 +334,12 @@ function upsertQuizProgressRow(questionId, answerId, isCorrect) {
 }
 
 function saveCurrentQuestionState() {
-  if (!revealed.value || selectedIndex.value === null) return
+  if (!revealed.value || !selectedIndices.value.length) return
   const q = currentQuestion.value
   questionStates.value[currentIndex.value] = {
-    selectedIndex: selectedIndex.value,
+    selectedIndices: [...selectedIndices.value],
     revealed: true,
-    isCorrect: isAnswerCorrect(q, selectedIndex.value)
+    isCorrect: isQuestionAnswerCorrect(q, selectedIndices.value)
   }
 }
 
@@ -294,21 +349,25 @@ function syncStateFromProgress(index) {
 
   const qid = String(q.uuid ?? q.id ?? '')
   const row = quizProgress.value.find((r) => String(r.question_id) === qid)
-  if (!row?.answer_id) return
+  const answerIds = normalizeAnswerIds(row?.answer_id)
+  if (!answerIds.length) return
 
-  const aIndex = q.answers.findIndex(
-    (a) => String(a.uuid ?? a.id) === String(row.answer_id)
-  )
-  if (aIndex < 0) return
+  const selected = answerIds
+    .map((aid) =>
+      q.answers.findIndex((a) => String(a.uuid ?? a.id) === String(aid))
+    )
+    .filter((i) => i >= 0)
+
+  if (!selected.length) return
 
   const state = {
-    selectedIndex: aIndex,
+    selectedIndices: selected,
     revealed: true
   }
   if (typeof row.is_correct === 'boolean') {
     state.isCorrect = row.is_correct
   } else {
-    state.isCorrect = isAnswerCorrect(q, aIndex)
+    state.isCorrect = isQuestionAnswerCorrect(q, selected)
   }
   questionStates.value[index] = state
 }
@@ -316,7 +375,7 @@ function syncStateFromProgress(index) {
 function loadQuestionState(index) {
   syncStateFromProgress(index)
   const state = questionStates.value[index]
-  selectedIndex.value = state?.selectedIndex ?? null
+  selectedIndices.value = getStateSelectedIndices(state)
   revealed.value = Boolean(state?.revealed)
 }
 
@@ -344,29 +403,52 @@ async function ensureQuestionLoaded(index) {
   }
 }
 
-async function selectAnswer(index) {
+function onAnswerClick(index) {
   if (revealed.value || !currentQuestion.value) return
+  if (isMultiSelect.value) {
+    toggleAnswerSelection(index)
+    return
+  }
+  submitAnswer([index])
+}
+
+function toggleAnswerSelection(index) {
+  const set = new Set(selectedIndices.value)
+  if (set.has(index)) set.delete(index)
+  else set.add(index)
+  selectedIndices.value = [...set].sort((a, b) => a - b)
+}
+
+function confirmMultiAnswer() {
+  if (revealed.value || !isMultiSelect.value || !selectedIndices.value.length) return
+  submitAnswer([...selectedIndices.value])
+}
+
+async function submitAnswer(indices) {
+  if (revealed.value || !currentQuestion.value || !indices.length) return
 
   const question = currentQuestion.value
-  const answer = question.answers[index]
   const questionId = question.uuid ?? question.id
-  const answerId = answer?.uuid ?? answer?.id ?? null
+  const answerIds = answerIdsFromIndices(question, indices)
+  const answerIdPayload = toAnswerIdPayload(answerIds)
+  const correct = isQuestionAnswerCorrect(question, indices)
 
-  const correct = isAnswerCorrect(question, index)
-
-  selectedIndex.value = index
+  selectedIndices.value = [...indices]
   revealed.value = true
   questionStates.value[currentIndex.value] = {
-    selectedIndex: index,
+    selectedIndices: [...indices],
     revealed: true,
     isCorrect: correct
   }
-  upsertQuizProgressRow(questionId, answerId, correct)
+  upsertQuizProgressRow(questionId, answerIdPayload, correct)
 
   if (!quizId.value || !questionId) return
 
   try {
-    await saveQuizPlayAnswer(quizId.value, { questionId, answerId })
+    await saveQuizPlayAnswer(quizId.value, {
+      questionId,
+      answerId: answerIdPayload
+    })
   } catch {
     /* postęp zapisany lokalnie; błąd API nie blokuje trybu nauki */
   }
@@ -411,7 +493,7 @@ async function goPrev() {
 
 function resetSession() {
   currentIndex.value = 0
-  selectedIndex.value = null
+  selectedIndices.value = []
   revealed.value = false
   questionStates.value = {}
   quizProgress.value = []
@@ -463,7 +545,7 @@ function applyAllProgressToQuestionStates(questionsList) {
     const q = questionsList[i]
     const qid = String(q?.uuid ?? q?.id ?? '')
     const row = quizProgress.value.find((r) => String(r.question_id) === qid)
-    if (!row?.answer_id) continue
+    if (!normalizeAnswerIds(row?.answer_id).length) continue
 
     if (isStudyQuestionLoaded(q)) {
       syncStateFromProgress(i)
@@ -471,7 +553,7 @@ function applyAllProgressToQuestionStates(questionsList) {
     }
 
     questionStates.value[i] = {
-      selectedIndex: null,
+      selectedIndices: [],
       revealed: true,
       isCorrect: row.is_correct === true
     }
@@ -528,275 +610,3 @@ async function loadQuiz() {
 watch([topicId, quizId], loadQuiz, { immediate: true })
 </script>
 
-<style scoped>
-.study-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 1.25rem;
-}
-
-.study-header-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.btn-reset-progress {
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
-  border: 0.5px solid var(--border-hover);
-  background: transparent;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.btn-reset-progress:hover:not(:disabled) {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.btn-reset-progress:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.study-header-main {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-}
-
-.study-title {
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.study-sub {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.mode-badge {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--purple-text);
-  background: var(--purple-light);
-  border-radius: 999px;
-  padding: 4px 10px;
-}
-
-.btn-back {
-  display: inline-flex;
-  align-items: center;
-  background: transparent;
-  border: none;
-  font-size: 20px;
-  color: var(--text-secondary);
-  padding: 2px 4px;
-  line-height: 1;
-  text-decoration: none;
-}
-
-.qp-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 1rem;
-}
-
-.qp-dot {
-  flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--bg-secondary);
-}
-
-.qp-dot.done {
-  background: var(--purple);
-}
-
-.qp-dot.cur {
-  background: #afa9ec;
-}
-
-.question-meta {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 0.75rem;
-}
-
-.quiz-q {
-  font-size: 16px;
-  font-weight: 500;
-  margin-bottom: 1.25rem;
-  line-height: 1.5;
-}
-
-.quiz-opts {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.quiz-opt {
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  border: 0.5px solid var(--border);
-  background: var(--bg-primary);
-  font-size: 15px;
-  text-align: left;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.quiz-opt:hover:not(:disabled):not(.correct):not(.wrong) {
-  border-color: var(--border-hover);
-  background: var(--bg-secondary);
-}
-
-.quiz-opt.correct {
-  border-color: var(--success);
-  background: var(--success-light);
-  color: #0f6e56;
-}
-
-.quiz-opt.wrong {
-  border-color: var(--danger);
-  background: var(--danger-light);
-  color: #a32d2d;
-}
-
-.reveal-panel {
-  margin-top: 1.25rem;
-  padding: 14px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-secondary);
-  border: 0.5px solid var(--border);
-}
-
-.reveal-title {
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 10px;
-}
-
-.expl-block {
-  padding: 10px 0;
-  border-top: 0.5px solid var(--border);
-}
-
-.expl-block:first-of-type {
-  border-top: none;
-  padding-top: 0;
-}
-
-.expl-answer {
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.expl-block--correct .expl-answer {
-  color: #0f6e56;
-}
-
-.expl-text {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-primary);
-}
-
-.study-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 1.25rem;
-}
-
-.study-actions .btn-action--next {
-  margin-left: auto;
-}
-
-.btn-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 20px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--purple);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.btn-action:hover {
-  background: var(--purple-dark);
-}
-
-.btn-action--ghost {
-  background: transparent;
-  color: var(--text-primary);
-  border: 0.5px solid var(--border-hover);
-}
-
-.btn-action--ghost:hover {
-  background: var(--bg-primary);
-}
-
-.quiz-score {
-  text-align: center;
-  padding: 2rem;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-}
-
-.quiz-score .btn-action--ghost {
-  margin-left: 8px;
-}
-
-.score-val {
-  font-size: 48px;
-  font-weight: 500;
-}
-
-.score-label {
-  font-size: 16px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-.score-pct {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 8px;
-  margin-bottom: 1rem;
-}
-
-.empty-note {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.empty-panel {
-  padding: 1.5rem;
-  text-align: center;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  font-size: 14px;
-}
-
-.btn-link {
-  display: inline-block;
-  margin-top: 12px;
-  color: var(--purple-text);
-  font-size: 14px;
-}
-</style>
